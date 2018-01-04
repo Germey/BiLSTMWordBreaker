@@ -2,7 +2,6 @@ import argparse
 import tensorflow as tf
 import pickle
 from sklearn.model_selection import train_test_split
-import numpy as np
 
 FLAGS = None
 
@@ -111,20 +110,20 @@ def main():
     with tf.variable_scope('outputs'):
         w = weight([FLAGS.num_units * 2, FLAGS.category_num])
         b = bias([FLAGS.category_num])
-        y = tf.argmax(tf.matmul(output, w) + b, axis=1)
+        y = tf.matmul(output, w) + b
     print('Output Y', y)
     
     y_label_reshape = tf.reshape(y_label, [-1])
     print('Y Label Reshape', y_label_reshape)
     
     # Prediction
-    correct_prediction = tf.equal(tf.cast(y, tf.int32), y_label_reshape)
+    correct_prediction = tf.equal(tf.cast(tf.argmax(y, axis=1), tf.int32), y_label_reshape)
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     print('Prediction', correct_prediction, 'Accuracy', accuracy)
     
     # Loss
-    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=tf.cast(y_label_reshape, tf.float32),
-                                                            logits=tf.cast(y, tf.float32))
+    cross_entropy = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_label_reshape,
+                                                                                  logits=tf.cast(y, tf.float32)))
     train = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy)
     
     # Iterator
@@ -134,18 +133,24 @@ def main():
     sess.run(tf.global_variables_initializer())
     
     # Train
-    for step in range(FLAGS.steps + 1):
+    for step in range(1, FLAGS.steps + 1):
         batch_x, batch_y = sess.run(train_iterator.get_next())
-        print(batch_x.shape, batch_y.shape)
         sess.run(train,
                  feed_dict={x: batch_x, y_label: batch_y, batch_size: FLAGS.batch_size, keep_prob: FLAGS.keep_prob})
         
-        # if step % FLAGS.steps_per_test == 0:
-        #     print('Test', sess.run(accuracy, feed_dict={x: batch_size: FLAGS.batch_size, }))
+        loss, acc = sess.run([cross_entropy, accuracy],
+                             feed_dict={x: batch_x, y_label: batch_y, batch_size: FLAGS.batch_size,
+                                        keep_prob: FLAGS.keep_prob})
+        print('Train Loss ', loss, 'Accuracy', acc)
         
-        
-        
-        print(sess.run(train_iterator.get_next(), feed_dict={batch_size: FLAGS.batch_size}))
+        if step % FLAGS.steps_per_valid == 0:
+            print('Valid Accuracy',
+                  sess.run(accuracy, feed_dict={x: valid_x, y_label: valid_y, batch_size: valid_x.shape[0],
+                                                keep_prob: 1}))
+        if step % FLAGS.steps_per_test == 0:
+            print('Test Accuracy',
+                  sess.run(accuracy, feed_dict={x: test_x, y_label: test_y, batch_size: test_x.shape[0],
+                                                keep_prob: 1}))
 
 
 if __name__ == '__main__':
