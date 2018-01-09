@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import pickle
 
-text = open('data.txt', encoding='utf-8').read()
+text = open('data/data.txt', encoding='utf-8').read()
 sentences = re.split('[，。！？、‘’“”]/[bems]', text)
 sentences = list(filter(lambda x: x.strip(), sentences))
 sentences = list(map(lambda x: x.strip(), sentences))
