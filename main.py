@@ -155,10 +155,10 @@ def main():
         # Train
         sess.run(train_initializer)
         for step in range(int(train_steps)):
-            sess.run(train,
-                     feed_dict={keep_prob: FLAGS.keep_prob})
-            loss, acc, gstep = sess.run([cross_entropy, accuracy, global_step],
-                                        feed_dict={keep_prob: 1})
+            # sess.run(train,
+            #          feed_dict={keep_prob: FLAGS.keep_prob})
+            loss, acc, gstep, _ = sess.run([cross_entropy, accuracy, global_step, train],
+                                           feed_dict={keep_prob: FLAGS.keep_prob})
             print('Global Step', gstep, 'Step', step, 'Train Loss', loss, 'Accuracy', acc)
         
         if epoch % FLAGS.epochs_per_dev == 0:
