@@ -105,15 +105,16 @@ def main():
     keep_prob = tf.placeholder(tf.float32, [])
     
     # RNN Layer
-    cell_fw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell(FLAGS.num_units, keep_prob) for _ in range(FLAGS.num_layer)])
-    cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell(FLAGS.num_units, keep_prob) for _ in range(FLAGS.num_layer)])
-    initial_state_fw = cell_fw.zero_state(tf.shape(x)[0], tf.float32)
-    initial_state_bw = cell_bw.zero_state(tf.shape(x)[0], tf.float32)
+    # cell_fw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell(FLAGS.num_units, keep_prob) for _ in range(FLAGS.num_layer)])
+    # cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell(FLAGS.num_units, keep_prob) for _ in range(FLAGS.num_layer)])
+    cell_fw = [lstm_cell(FLAGS.num_units, keep_prob) for _ in range(FLAGS.num_layer)]
+    cell_bw = [lstm_cell(FLAGS.num_units, keep_prob) for _ in range(FLAGS.num_layer)]
+    # initial_state_fw = cell_fw.zero_state(tf.shape(x)[0], tf.float32)
+    # initial_state_bw = cell_bw.zero_state(tf.shape(x)[0], tf.float32)
     print('Inputs', inputs)
     inputs = tf.unstack(inputs, FLAGS.time_step, axis=1)
     print('Inputs unstack', inputs)
-    output, _, _ = tf.nn.static_bidirectional_rnn(cell_fw, cell_bw, inputs=inputs, initial_state_fw=initial_state_fw,
-                                                  initial_state_bw=initial_state_bw)
+    output, _, _ = tf.contrib.rnn.stack_bidirectional_rnn(cell_fw, cell_bw, inputs=inputs, dtype=tf.float32)
     # output_fw, _ = tf.nn.dynamic_rnn(cell_fw, inputs=inputs, initial_state=initial_state_fw)
     # output_bw, _ = tf.nn.dynamic_rnn(cell_bw, inputs=inputs, initial_state=initial_state_bw)
     # print('Output Fw, Bw', output_fw, output_bw)
