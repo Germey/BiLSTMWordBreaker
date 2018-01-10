@@ -145,9 +145,15 @@ def main():
                                                                                   logits=tf.cast(y, tf.float32)))
     train = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy, global_step=global_step)
     
+    # Saver
+    saver = tf.train.Saver(save_relative_paths='ckpt')
+    
     # Iterator
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
+    
+    # Global step
+    gstep = 0
     
     # Saver
     # saver = tf.train.Saver()
@@ -156,17 +162,20 @@ def main():
         # Train
         sess.run(train_initializer)
         for step in range(int(train_steps)):
-            # sess.run(train,
-            #          feed_dict={keep_prob: FLAGS.keep_prob})
             loss, acc, gstep, _ = sess.run([cross_entropy, accuracy, global_step, train],
                                            feed_dict={keep_prob: FLAGS.keep_prob})
-            print('Global Step', gstep, 'Step', step, 'Train Loss', loss, 'Accuracy', acc)
+            if step % FLAGS.steps_per_print == 0:
+                print('Global Step', gstep, 'Step', step, 'Train Loss', loss, 'Accuracy', acc)
         
         if epoch % FLAGS.epochs_per_dev == 0:
             # Dev
             sess.run(dev_initializer)
             for step in range(int(dev_steps)):
-                print('Dev Accuracy', sess.run(accuracy, feed_dict={keep_prob: 1}), 'Step', step)
+                if step % FLAGS.steps_per_print == 0:
+                    print('Dev Accuracy', sess.run(accuracy, feed_dict={keep_prob: 1}), 'Step', step)
+        
+        if epoch % FLAGS.epochs_per_save == 0:
+            saver.save(sess, 'model.ckpt', global_step=gstep)
 
 
 if __name__ == '__main__':
@@ -181,9 +190,10 @@ if __name__ == '__main__':
     parser.add_argument('--category_num', help='category num', default=5, type=int)
     parser.add_argument('--learning_rate', help='learning rate', default=0.01, type=float)
     parser.add_argument('--epoch_num', help='num of epoch', default=1000, type=int)
-    parser.add_argument('--epochs_per_test', help='steps per test', default=100, type=int)
-    parser.add_argument('--epochs_per_dev', help='steps per dev', default=2, type=int)
-    parser.add_argument('--steps_per_save', help='steps per save', default=2000, type=int)
+    parser.add_argument('--epochs_per_test', help='epochs per test', default=100, type=int)
+    parser.add_argument('--epochs_per_dev', help='epochs per dev', default=2, type=int)
+    parser.add_argument('--epochs_per_save', help='epochs per save', default=2, type=int)
+    parser.add_argument('--steps_per_print', help='steps per print', default=100, type=int)
     parser.add_argument('--keep_prob', help='train keep prob dropout', default=0.5, type=float)
     
     FLAGS = parser.parse_args()
