@@ -3,6 +3,7 @@ import tensorflow as tf
 import pickle
 import math
 from sklearn.model_selection import train_test_split
+from os.path import join
 
 FLAGS = None
 
@@ -63,34 +64,32 @@ def main():
     # Split data
     train_x, train_y, dev_x, dev_y, test_x, test_y = get_data(data_x, data_y)
     
+    # Steps
     train_steps = math.ceil(train_x.shape[0] / FLAGS.train_batch_size)
     dev_steps = math.ceil(dev_x.shape[0] / FLAGS.dev_batch_size)
-    
-    print(train_steps)
+    test_steps = math.ceil(test_x.shape[0] / FLAGS.test_batch_size)
     
     vocab_size = len(word2id) + 1
     print('Vocab Size', vocab_size)
     
-    global_step = tf.Variable(0, trainable=False, name='global_step')
+    global_step = tf.Variable(-1, trainable=False, name='global_step')
     
     # Train and dev dataset
     train_dataset = tf.data.Dataset.from_tensor_slices((train_x, train_y))
     train_dataset = train_dataset.batch(FLAGS.train_batch_size)
     
-    print(train_dataset)
-    
     dev_dataset = tf.data.Dataset.from_tensor_slices((dev_x, dev_y))
     dev_dataset = dev_dataset.batch(FLAGS.dev_batch_size)
+    
+    test_dataset = tf.data.Dataset.from_tensor_slices((test_x, test_y))
+    test_dataset = test_dataset.batch(FLAGS.test_batch_size)
     
     # A reinitializable iterator
     iterator = tf.data.Iterator.from_structure(train_dataset.output_types, train_dataset.output_shapes)
     
-    next_batch = iterator.get_next()
-    
     train_initializer = iterator.make_initializer(train_dataset)
     dev_initializer = iterator.make_initializer(dev_dataset)
-    
-    print(next_batch)
+    test_initializer = iterator.make_initializer(test_dataset)
     
     # Input Layer
     with tf.variable_scope('inputs'):
@@ -111,9 +110,7 @@ def main():
     cell_bw = [lstm_cell(FLAGS.num_units, keep_prob) for _ in range(FLAGS.num_layer)]
     # initial_state_fw = cell_fw.zero_state(tf.shape(x)[0], tf.float32)
     # initial_state_bw = cell_bw.zero_state(tf.shape(x)[0], tf.float32)
-    print('Inputs', inputs)
     inputs = tf.unstack(inputs, FLAGS.time_step, axis=1)
-    print('Inputs unstack', inputs)
     output, _, _ = tf.contrib.rnn.stack_bidirectional_rnn(cell_fw, cell_bw, inputs=inputs, dtype=tf.float32)
     # output_fw, _ = tf.nn.dynamic_rnn(cell_fw, inputs=inputs, initial_state=initial_state_fw)
     # output_bw, _ = tf.nn.dynamic_rnn(cell_bw, inputs=inputs, initial_state=initial_state_bw)
@@ -132,21 +129,28 @@ def main():
         y = tf.matmul(output, w) + b
     print('Output Y', y)
     
+    tf.summary.histogram('y', y)
+    
     y_label_reshape = tf.cast(tf.reshape(y_label, [-1]), tf.int32)
     print('Y Label Reshape', y_label_reshape)
     
     # Prediction
     correct_prediction = tf.equal(tf.cast(tf.argmax(y, axis=1), tf.int32), y_label_reshape)
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+    tf.summary.scalar('accuracy', accuracy)
+    
     print('Prediction', correct_prediction, 'Accuracy', accuracy)
     
     # Loss
     cross_entropy = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_label_reshape,
                                                                                   logits=tf.cast(y, tf.float32)))
+    tf.summary.scalar('loss', cross_entropy)
+    
+    # Train
     train = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy, global_step=global_step)
     
     # Saver
-    saver = tf.train.Saver(save_relative_paths='ckpt')
+    saver = tf.train.Saver()
     
     # Iterator
     sess = tf.Session()
@@ -155,33 +159,60 @@ def main():
     # Global step
     gstep = 0
     
-    # Saver
-    # saver = tf.train.Saver()
-    for epoch in range(FLAGS.epoch_num):
-        tf.train.global_step(sess, global_step_tensor=global_step)
-        # Train
-        sess.run(train_initializer)
-        for step in range(int(train_steps)):
-            loss, acc, gstep, _ = sess.run([cross_entropy, accuracy, global_step, train],
-                                           feed_dict={keep_prob: FLAGS.keep_prob})
-            if step % FLAGS.steps_per_print == 0:
-                print('Global Step', gstep, 'Step', step, 'Train Loss', loss, 'Accuracy', acc)
+    # Summaries
+    summaries = tf.summary.merge_all()
+    writer = tf.summary.FileWriter(join(FLAGS.summaries_dir, 'train'),
+                                   sess.graph)
+    
+    if FLAGS.train:
         
-        if epoch % FLAGS.epochs_per_dev == 0:
-            # Dev
-            sess.run(dev_initializer)
-            for step in range(int(dev_steps)):
+        if tf.gfile.Exists(FLAGS.summaries_dir):
+            tf.gfile.DeleteRecursively(FLAGS.summaries_dir)
+        
+        for epoch in range(FLAGS.epoch_num):
+            tf.train.global_step(sess, global_step_tensor=global_step)
+            # Train
+            sess.run(train_initializer)
+            for step in range(int(train_steps)):
+                smrs, loss, acc, gstep, _ = sess.run([summaries, cross_entropy, accuracy, global_step, train],
+                                                     feed_dict={keep_prob: FLAGS.keep_prob})
+                # Print log
                 if step % FLAGS.steps_per_print == 0:
-                    print('Dev Accuracy', sess.run(accuracy, feed_dict={keep_prob: 1}), 'Step', step)
+                    print('Global Step', gstep, 'Step', step, 'Train Loss', loss, 'Accuracy', acc)
+                
+                # Summaries for tensorboard
+                if gstep % FLAGS.steps_per_summary == 0:
+                    writer.add_summary(smrs, gstep)
+                    print('Write summaries to', FLAGS.summaries_dir)
+            
+            if epoch % FLAGS.epochs_per_dev == 0:
+                # Dev
+                sess.run(dev_initializer)
+                for step in range(int(dev_steps)):
+                    if step % FLAGS.steps_per_print == 0:
+                        print('Dev Accuracy', sess.run(accuracy, feed_dict={keep_prob: 1}), 'Step', step)
+            
+            # Save model
+            if epoch % FLAGS.epochs_per_save == 0:
+                saver.save(sess, FLAGS.checkpoint_dir, global_step=gstep)
+    
+    else:
+        # Load model
+        ckpt = tf.train.get_checkpoint_state('ckpt')
+        saver.restore(sess, ckpt.model_checkpoint_path)
+        print('Restore from', ckpt.model_checkpoint_path)
+        sess.run(test_initializer)
         
-        if epoch % FLAGS.epochs_per_save == 0:
-            saver.save(sess, 'model.ckpt', global_step=gstep)
+        for step in range(int(test_steps)):
+            acc = sess.run(accuracy, feed_dict={keep_prob: 1})
+            print('Test step', step, 'Accuracy', acc)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='BI LSTM')
     parser.add_argument('--train_batch_size', help='train batch size', default=50)
     parser.add_argument('--dev_batch_size', help='dev batch size', default=50)
+    parser.add_argument('--test_batch_size', help='test batch size', default=500)
     parser.add_argument('--source_data', help='source size', default='./data/data.pkl')
     parser.add_argument('--num_layer', help='num of layer', default=2, type=int)
     parser.add_argument('--num_units', help='num of units', default=64, type=int)
@@ -194,8 +225,14 @@ if __name__ == '__main__':
     parser.add_argument('--epochs_per_dev', help='epochs per dev', default=2, type=int)
     parser.add_argument('--epochs_per_save', help='epochs per save', default=2, type=int)
     parser.add_argument('--steps_per_print', help='steps per print', default=100, type=int)
+    parser.add_argument('--steps_per_summary', help='steps per summary', default=100, type=int)
     parser.add_argument('--keep_prob', help='train keep prob dropout', default=0.5, type=float)
+    parser.add_argument('--checkpoint_dir', help='checkpoint dir', default='ckpt/model.ckpt', type=str)
+    parser.add_argument('--summaries_dir', help='summaries dir', default='summaries/', type=str)
+    parser.add_argument('--train', help='train', default=False, type=bool)
     
     FLAGS = parser.parse_args()
+    
     print(FLAGS)
+    
     main()
