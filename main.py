@@ -2,6 +2,7 @@ import argparse
 import tensorflow as tf
 import pickle
 import math
+import numpy as np
 from sklearn.model_selection import train_test_split
 from os.path import join
 
@@ -127,15 +128,16 @@ def main():
         w = weight([FLAGS.num_units * 2, FLAGS.category_num])
         b = bias([FLAGS.category_num])
         y = tf.matmul(output, w) + b
-    print('Output Y', y)
+    y_predict = tf.cast(tf.argmax(y, axis=1), tf.int32)
+    print('Output Y', y_predict)
     
-    tf.summary.histogram('y', y)
+    tf.summary.histogram('y_predict', y_predict)
     
     y_label_reshape = tf.cast(tf.reshape(y_label, [-1]), tf.int32)
     print('Y Label Reshape', y_label_reshape)
     
     # Prediction
-    correct_prediction = tf.equal(tf.cast(tf.argmax(y, axis=1), tf.int32), y_label_reshape)
+    correct_prediction = tf.equal(y_predict, y_label_reshape)
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     tf.summary.scalar('accuracy', accuracy)
     
@@ -204,8 +206,14 @@ def main():
         sess.run(test_initializer)
         
         for step in range(int(test_steps)):
-            acc = sess.run(accuracy, feed_dict={keep_prob: 1})
+            x_results, y_predict_results, acc = sess.run([x, y_predict, accuracy], feed_dict={keep_prob: 1})
             print('Test step', step, 'Accuracy', acc)
+            y_predict_results = np.reshape(y_predict_results, x_results.shape)
+            for i in range(len(x_results)):
+                x_result, y_predict_result = list(filter(lambda x: x, x_results[i])), list(
+                    filter(lambda x: x, y_predict_results[i]))
+                x_text, y_predict_text = ''.join(id2word[x_result].values), ''.join(id2tag[y_predict_result].values)
+                print(x_text, y_predict_text)
 
 
 if __name__ == '__main__':
@@ -231,8 +239,6 @@ if __name__ == '__main__':
     parser.add_argument('--summaries_dir', help='summaries dir', default='summaries/', type=str)
     parser.add_argument('--train', help='train', default=False, type=bool)
     
-    FLAGS = parser.parse_args()
-    
-    print(FLAGS)
+    FLAGS, args = parser.parse_known_args()
     
     main()
