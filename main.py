@@ -128,8 +128,8 @@ def main():
         w = weight([FLAGS.num_units * 2, FLAGS.category_num])
         b = bias([FLAGS.category_num])
         y = tf.matmul(output, w) + b
-    y_predict = tf.cast(tf.argmax(y, axis=1), tf.int32)
-    print('Output Y', y_predict)
+        y_predict = tf.cast(tf.argmax(y, axis=1), tf.int32)
+        print('Output Y', y_predict)
     
     tf.summary.histogram('y_predict', y_predict)
     

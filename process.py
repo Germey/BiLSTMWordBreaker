@@ -4,11 +4,16 @@ import pandas as pd
 import numpy as np
 import pickle
 
+# Read origin data
 text = open('data/data.txt', encoding='utf-8').read()
+# Get split sentences
 sentences = re.split('[，。！？、‘’“”]/[bems]', text)
+# Filter sentences whose length is 0
 sentences = list(filter(lambda x: x.strip(), sentences))
+# Strip sentences
 sentences = list(map(lambda x: x.strip(), sentences))
 
+# To numpy array
 words, labels = [], []
 print('Start creating words and labels...')
 for sentence in sentences:
@@ -20,11 +25,8 @@ print('Words Length', len(words), 'Labels Length', len(labels))
 print('Words Example', words[0])
 print('Labels Example', labels[0])
 
+# Merge all words
 all_words = list(chain(*words))
-print(len(all_words))
-
-print(len(all_words))
-
 # All words to Series
 all_words_sr = pd.Series(all_words)
 # Get value count, index changed to set
@@ -47,7 +49,6 @@ tag2id = pd.Series(tags_ids, index=tags_set)
 id2tag = pd.Series(tags_set, index=tag2id)
 
 max_length = 32
-
 
 def x_transform(words):
     ids = list(word2id[words])
